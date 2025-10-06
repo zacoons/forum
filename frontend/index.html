@@ -1,0 +1,10 @@
+<!doctype html>
+Logged in!
+<script>
+const server = "http://localhost:8080";
+
+(async () => {
+	const res = await fetch(new URL("/_forum/index", server).href);
+	console.log(res);
+})();
+</script>

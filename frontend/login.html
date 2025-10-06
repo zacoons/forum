@@ -1,0 +1,22 @@
+<!doctype html>
+<input id="username" placeholder="username"/>
+<input id="password" type="password" placeholder="password"/>
+<button onclick="auth()">login</button>
+<script>
+const server = "http://localhost:8080";
+
+async function auth() {
+	const username = document.getElementById("username");
+	const password = document.getElementById("password");
+	const res = await fetch(new URL("/_forum/auth", server).href, {
+		method: "POST",
+		body: username.value + "\0" + password.value,
+		headers: {
+			"Content-Type": "application/octet-stream",
+		},
+	});
+	if (res.ok) {
+		window.location.href = "/";
+	}
+}
+</script>
