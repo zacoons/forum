@@ -18,25 +18,7 @@ Bun.serve({
 		"/": new Response(await Bun.file("../frontend/index.html").bytes()),
 		"/login": new Response(await Bun.file("../frontend/login.html").bytes()),
 
-		"/_forum/index": {
-			GET: async req => {
-				// Check if user is auth'd
-				const username = req.cookies.get("username");
-				const authTok = req.cookies.get("authTok");
-				if (!username || !authTok || authTokens[username] !== authTok) {
-					return new Response(null, { status: 401, headers: corsHeaders });
-				}
-
-				const threads = [
-					{
-						"id": "asduy910872dhs",
-						"title": "beans",
-						"msg": "Does anyone here like beans? I love beans in chile-con-carne."
-					},
-				];
-				return Response.json(threads, { status: 200, headers: corsHeaders });
-			}
-		},
+		"/_forum/index": new Response(Bun.file("posts.json")),
 
 		"/_forum/auth": {
 			POST: async req => {
@@ -67,6 +49,44 @@ Bun.serve({
 				authTokens[username] = authTok;
 				req.cookies.set("username", username);
 				req.cookies.set("authTok", authTok);
+				return new Response(null, { status: 200, headers: corsHeaders });
+			},
+		},
+
+		"/_forum/post": {
+			POST: async req => {
+				// Check if user is auth'd
+				const username = req.cookies.get("username");
+				const authTok = req.cookies.get("authTok");
+				if (!username || !authTok || authTokens[username] !== authTok) {
+					return new Response(null, { status: 401, headers: corsHeaders });
+				}
+
+				if (!req.body) {
+					return new Response("Request body was null", { status: 400, headers: corsHeaders });
+				}
+				const body = await req.body.json();
+				const posts = await Bun.file("posts.json").json();
+				// Create new post
+				if (!body.parent) {
+					if (isNaN(new Date(body.date).valueOf())) {
+						return new Response("Invalid date", { status: 400, headers: corsHeaders });
+					}
+					posts.push({
+						id: crypto.randomUUID(),
+						author: username,
+						date: body.date,
+						title: body.title,
+						msg: body.msg,
+						replies: [],
+					});
+				}
+				// Reply to a post
+				else {
+					// TODO
+				}
+				Bun.write("posts.json", posts);
+
 				return new Response(null, { status: 200, headers: corsHeaders });
 			},
 		},

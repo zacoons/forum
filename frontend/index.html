@@ -1,10 +1,43 @@
 <!doctype html>
-Logged in!
+<input id="title" placeholder="title"/>
+<textarea id="msg" placeholder="blah blah blah..."></textarea>
+<button onclick="post()">post</button>
+<h2>Posts:</h2>
+<div id="container"></div>
 <script>
 const server = "http://localhost:8080";
 
+const title = document.getElementById("title");
+const msg  = document.getElementById("msg");
+
 (async () => {
+	container.innerHTML = "";
 	const res = await fetch(new URL("/_forum/index", server).href);
-	console.log(res);
+	const json = await res.json();
+	for (const post of json) {
+		const itemContainer = document.createElement("p");
+		const link = document.createElement("a");
+		link.href = "#";
+		link.innerText = `${post.author}: ${post.title} - ${new Date(post.date).toLocaleString()}`;
+		const msg = document.createElement("p");
+		msg.innerText = post.msg;
+		itemContainer.appendChild(link);
+		itemContainer.appendChild(msg);
+		container.appendChild(itemContainer);
+	}
 })();
+
+async function post() {
+	const res = await fetch(new URL("/_forum/post", server).href, {
+		method: "POST",
+		body: JSON.stringify({
+			date: new Date(),
+			title: title.value,
+			msg: msg.value,
+		}),
+		headers: {
+			"Content-Type": "application/json",
+		},
+	});
+}
 </script>
