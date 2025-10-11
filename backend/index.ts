@@ -9,7 +9,8 @@ const usersPromise = Bun.file("users.json").json();
 
 const authTokens: any = {};
 
-Bun.serve({
+Bun.listen({
+	hostname: "127.0.0.1",
 	port: process.env.PORT || 8080,
 	tls,
 
