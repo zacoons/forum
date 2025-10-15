@@ -1,3 +1,2 @@
-node_modules
-.env
-bun.lock
+target/
+Cargo.lock
