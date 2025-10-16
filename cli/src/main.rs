@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use anyhow::Result;
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
@@ -41,9 +43,27 @@ async fn posts(stream: &mut Stream) -> Result<()> {
 }
 
 async fn auth(stream: &mut Stream) -> Result<()> {
+    let mut stdout = std::io::stdout();
+    stdout.write_all(b"name: ")?;
+    stdout.flush()?;
+    let mut name = String::new();
+    std::io::stdin().read_line(&mut name)?;
+
+    let mut stdout = std::io::stdout();
+    stdout.write_all(b"passwd: ")?;
+    stdout.flush()?;
+    let mut passwd = String::new();
+    std::io::stdin().read_line(&mut passwd)?;
+
     let args = rmpv::Value::Map(vec![
-        (rmpv::Value::from("name"), rmpv::Value::from("zacoons")),
-        (rmpv::Value::from("passwd"), rmpv::Value::from("a")),
+        (
+            rmpv::Value::from("name"),
+            rmpv::Value::from(&name[..name.len() - 1]),
+        ),
+        (
+            rmpv::Value::from("passwd"),
+            rmpv::Value::from(&passwd[..passwd.len() - 1]),
+        ),
     ]);
     let command = rmpv::Value::Map(vec![
         (rmpv::Value::from("cmd"), rmpv::Value::from("auth")),
@@ -52,7 +72,14 @@ async fn auth(stream: &mut Stream) -> Result<()> {
     stream.send(command).await?;
 
     let response = stream.next().await.unwrap()?;
-    println!("{}", response);
+    if let Some(tok) = response["tok"].as_str() {
+        std::fs::write("tok", tok)?;
+        println!("Success");
+    } else if let Some(err) = response["err"].as_str() {
+        println!("Error: {}", err);
+    } else {
+        println!("Unknown error");
+    }
 
     Ok(())
 }

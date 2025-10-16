@@ -1,0 +1,4 @@
+addr = "127.0.0.1:7172"
+
+[users]
+zacoons = { passwd = "$2b$12$B02tnyS.tM4NTxkqIRXx3e16lHam9MTZgH4UyZ4dw.WAwXd35fyc6" }
