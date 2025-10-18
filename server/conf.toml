@@ -1,4 +1,9 @@
-addr = "127.0.0.1:7172"
+addr = "localhost"
+#port = 7172
+
+tls = true
+cert = "cert.pem"
+key = "key.pem"
 
 [users]
 zacoons = { passwd = "$2b$12$B02tnyS.tM4NTxkqIRXx3e16lHam9MTZgH4UyZ4dw.WAwXd35fyc6" }

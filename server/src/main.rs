@@ -1,13 +1,17 @@
 use std::{
     collections::HashMap,
+    net::{SocketAddr, ToSocketAddrs},
     sync::{Arc, Mutex},
 };
 
 use anyhow::{Result, anyhow};
 use futures_util::{SinkExt, StreamExt};
-use tokio::net::{TcpListener, TcpStream};
-use tokio_util::codec::Framed;
+use serde::Deserialize;
 use uuid::Uuid;
+
+use crate::server::Server;
+
+mod server;
 
 #[derive(Debug)]
 struct Post {
@@ -26,14 +30,23 @@ struct Reply {
     msg: String,
 }
 
-struct Context {
-    conf: &'static toml::Table,
-    auth_tokens: Arc<Mutex<HashMap<String, String>>>,
-    stream: Framed<TcpStream, msgpack_codec::Codec>,
+#[derive(Deserialize)]
+struct Conf {
+    addr: String,
+    port: Option<u16>,
+
+    tls: Option<bool>,
+    cert: Option<String>,
+    key: Option<String>,
+
+    users: Option<toml::Table>,
 }
 
-const RW_BUF_SIZE: usize = 512;
-const MAX_MSG_SIZE: usize = 1024;
+struct Context {
+    conf: &'static Conf,
+    auth_tokens: Arc<Mutex<HashMap<String, String>>>,
+    stream: server::Stream,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -54,25 +67,33 @@ async fn main() -> Result<()> {
         }
     }
 
-    let conf_box = Box::new(toml::from_slice::<toml::Table>(&std::fs::read(
-        "conf.toml",
-    )?)?);
+    let conf_box = Box::new(toml::from_slice::<Conf>(&std::fs::read("conf.toml")?)?);
     let conf = Box::leak(conf_box);
 
     let auth_tokens = Arc::new(Mutex::new(HashMap::<String, String>::new()));
 
-    let listener = TcpListener::bind(conf["addr"].as_str().unwrap()).await?;
+    let socket_addr = (conf.addr.clone(), conf.port.unwrap_or(7172))
+        .to_socket_addrs()?
+        .next()
+        .unwrap();
+    let enable_tls = conf.tls.unwrap_or(false);
+    const MAX_MSG_SIZE: usize = 1024;
+    const RW_BUF_SIZE: usize = 512;
+    let server = if enable_tls {
+        Server::bind_with_tls(
+            MAX_MSG_SIZE,
+            RW_BUF_SIZE,
+            socket_addr,
+            conf.cert.as_ref().unwrap(),
+            conf.key.as_ref().unwrap(),
+        )
+        .await?
+    } else {
+        Server::bind(MAX_MSG_SIZE, RW_BUF_SIZE, socket_addr).await?
+    };
 
     loop {
-        let (tcp_stream, _) = listener.accept().await?;
-        let stream = Framed::with_capacity(
-            tcp_stream,
-            msgpack_codec::Codec {
-                max_msg_size: MAX_MSG_SIZE,
-                max_depth: 8,
-            },
-            RW_BUF_SIZE,
-        );
+        let stream = server.accept().await?;
         let cx = Context {
             conf: conf,
             auth_tokens: auth_tokens.clone(),
@@ -100,7 +121,7 @@ async fn handle_client(mut cx: Context) {
     }
 }
 
-async fn handle_cmd<'a>(v: rmpv::Value, cx: &mut Context) {
+async fn handle_cmd(v: rmpv::Value, cx: &mut Context) {
     if let Some(cmd) = v["cmd"].as_str() {
         if let Err(err) = match cmd {
             "posts" => handle_posts(cx).await,
@@ -130,7 +151,7 @@ async fn handle_cmd<'a>(v: rmpv::Value, cx: &mut Context) {
     }
 }
 
-async fn handle_posts<'a>(cx: &mut Context) -> Result<()> {
+async fn handle_posts(cx: &mut Context) -> Result<()> {
     cx.stream
         .send(rmpv::Value::from("post1, post2, ..."))
         .await?;
@@ -138,7 +159,7 @@ async fn handle_posts<'a>(cx: &mut Context) -> Result<()> {
     Ok(())
 }
 
-async fn handle_auth<'a>(args: &rmpv::Value, cx: &mut Context) -> Result<()> {
+async fn handle_auth(args: &rmpv::Value, cx: &mut Context) -> Result<()> {
     let name = match args["name"].as_str() {
         Some(it) => it,
         None => return Err(anyhow!("Missing name")),
@@ -173,7 +194,7 @@ async fn handle_auth<'a>(args: &rmpv::Value, cx: &mut Context) -> Result<()> {
     Ok(())
 }
 fn verify_user(name: &str, passwd: &str, cx: &mut Context) -> Result<bool> {
-    if let Some(users) = cx.conf.get("users")
+    if let Some(users) = &cx.conf.users
         && let Some(user) = users.get(name)
         && let Some(user) = user.as_table()
     {
